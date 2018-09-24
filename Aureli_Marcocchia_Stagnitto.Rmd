@@ -1,0 +1,1224 @@
+---
+title: "Statistical Learning - Homework 2"
+author: "Davide Aureli, Andrea Marcocchia and Dario Stagnitto"
+date: "17/06/2018"
+output:
+  html_document:
+    code_folding: show
+    fig_height: 11
+    fig_width: 13
+    highlight: haddock
+    number_sections: no
+    theme: yeti
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE,message=FALSE)
+```
+
+#<span style="color:red">PART 1</span>
+
+## Introduction 
+
+The goal of classification is to build a model of the distribution of class labels in terms of predictor features.
+We observe i.i.d. data pairs from the joint $D_n = \{ (X_1,Y_1),...,(X_n,Y_n)\}$ where each tuple is composed by:
+
+- $Y_i \in  \{0,1,..., K-1\}$ which represents the classification variable (with $K$ classes)
+- $X_i = (x_1,...,x_p)$ which represents the values of the predictors
+
+In other words a classifier predicts $Y$ given a feature vector $X$.
+
+From now on we're gonna focus on a **binary classification** problem so $Y_i \in \{0, 1\}$.
+
+The resulting classifier is then used to assign class labels to the testing instances, where the values of the predictor features are known, but the values of the class value not.
+
+There are many classification methods but we're going to talk about the **Naive Bayes classifier**.
+
+
+## Naive Bayes
+
+The Bayes classifiers are a family of algorithms, and the Naive Bayes is a special case in which is assumed that the value of a particular feature is independent from the value of any other feature, given the class variable.
+Firstly, according to the Bayes' rule, we define the Bayes classifier as follows.
+
+\[
+P(Y \mid X_i) = \frac{P(X_i \mid Y) \cdot P(Y)}{P(X_i)} 
+\]
+
+with $i \in \{1,...,n\}$.
+
+
+Given that, $X$ is classified in the class $0$ if and only if:
+
+\[
+f_b(X_i) = \frac{P(Y_i = 0 \mid X_i)}{P(Y_i = 1 \mid X_i)} \geq 1
+\]
+
+
+where $f_b(X_i)$ is called a **Bayesian classifier**.
+
+We're not talking about the Naive classifier yet. We need to make a fundamental assumption which marks the Naive classifiers: **the predictors are considered independent to each other conditionally to the labels**.
+
+Let's go to math...
+
+
+According to what we said above, we can explicit the *Likelihood* using this latter assumption:
+
+\[
+P(X_i \mid Y = y) = P(x_1,...,x_p \mid y) = \prod_{j = 1}^p P(x_j \mid y)
+\]
+
+The resulting classifier is:
+
+\[
+f_{nb}(X_i) = \frac{P(Y = 0) \cdot \prod_{j = 1}^pP(x_j \mid 0)}{P(Y = 1) \cdot \prod_{j = 1}^pP(x_j \mid 1)}
+\]
+
+where $f_{nb}(X_i)$ is called **Naive Bayes classifier**.
+
+
+Now the question is: 
+
+**_Is it meaningfull, in real case applications, to consider independence among all the covariates?_**
+
+Let's start to represent the basic situation by means a **DAG** (Directed Acycle Graph):
+
+
+```{r}
+library(igraph)
+graph <- make_empty_graph(directed=T)
+graph <- graph + vertex(color= 'lightblue',name="Y")+vertex(color= 'lightblue',name=expression(X_1))+vertex(color= 'lightblue',name=expression(X_2))+vertex(color= 'lightblue',name=expression(X_3))+vertex(color= 'lightblue',name=expression(X_4))
+graph <- graph + edge(1, 2)+ edge(1, 3)+ edge(1, 4)+ edge(1, 5)
+l <-layout.reingold.tilford(graph) 
+plot(graph,layout = l, vertex.size=60,edge.arrow.size=0.9,edge.color='darkcyan', main="Directed Acycle Graph")
+```
+
+                  
+As shown above we have the node $Y$ which represents the label and $(x_1,x_2,x_3,x_4)$ the features.
+It is possible deriving the joint distribution as follows:
+
+\[
+P(Y_i,X_i) = P(Y_i) \cdot \prod_{j=1}^p P(x_j \mid Y_i)
+\]
+
+In this case we have that all attributes are independent given the value of the class variable.
+
+This is called *conditional independence*.
+
+**_But how can be possible that Naive Bayes works well even though the assumption is almost never hold in the real world?_**
+
+
+It has been observed that Naive Bayes may still have high accuracy on a dataset in which strong dependences exist among attributes.
+Proceeding on this way, the structure of our graph changes. 
+
+Let's plot the **ANB** (Augmented Naive Bayes)
+
+
+
+```{r}
+library(igraph)
+graph <- make_empty_graph(directed=T)
+graph <- graph+ vertex(color= 'lightblue',name="Y")+vertex(color= 'lightblue',name=expression(X_1))+vertex(color= 'lightblue',name=expression(X_2))+vertex(color= 'lightblue',name=expression(X_3))+vertex(color= 'lightblue',name=expression(X_4))
+graph <- graph + edge(1, 2)+ edge(1, 3)+ edge(1, 4)+ edge(1, 5)+ edge(2, 3)+ edge(3, 4)+ edge(4, 5)
+l <-layout.reingold.tilford(graph) 
+l[,1] <- c(0,-20,-5,5,20)
+plot(graph,layout = l,edge.arrow.size=0.9,edge.color='darkcyan',edge.curved=c(0,0,0,0,-1,-1,-1,-1),vertex.size=20 ,main="Augmented Naive Bayes")
+```
+
+
+Now, the joint distribution is defined as:
+
+\[
+P(Y_i,X_i) = P(Y_i) \cdot \prod_{j=1}^p P(x_j \mid pa(x_j), Y_i)
+\]
+
+where **$pa(x_j)$ represents the value of the parents releated to $x_j$**.
+
+**_Under which conditions those two graphs are releated to each other?_**
+
+The key point here is that we need to know how the dependencies affect the classification, and under what
+conditions do not.
+
+First of all... **_Local Dependence Distribution (LDD)_**!
+
+For each node, the influence of its parents is quantified by the correspondent conditional probabilities. 
+The dependence between a node and its parents is the local dependence of this node.
+
+The ratio of the conditional probability of the node given its parents over the conditional probability without the parents, reflects how strong the parents affect the feature in each class.
+
+Do math again....
+
+\[
+LDD^0(x_j \mid pa(x_j)) = \frac{P(x_j \mid pa(x_j), 0)}{P(x_j \mid 0)}
+\]
+
+$LDD^0$ reflects the strength of the local dependence of node $x_j$ in class $0$, that is measures the influence of $x_j$’s local dependence for the classification into the class $0$.
+
+
+\[
+LDD^1(x_j \mid pa(x_j)) = \frac{P(x_j \mid pa(x_j), 1)}{P(x_j \mid 1)}
+\]
+
+The same interpretation is valid fo $LDD^1$.
+
+**_Results_**:
+
+- If the node has no parents $LDD^0 = LDD^1 = 1$
+
+- If $LDD^0 > 1$ then, $x_i$ local dependence within the class, supports the class $0$. Otherwise the opposite one.
+The same situation holds for $LDD^1$. 
+
+**_What does all this stuff mean?_**
+
+Well, **when the local dependence derivatives in both classes support the different classifications, they cancel partially each other out**, and the final classification supported by the local dependence is the class with the greater local dependence derivative.
+
+Another case is that **the local dependence derivatives in the two classes support the same classification**. So the local dependencies in the two classes work together to support the splitting.
+
+Now we analyze a new measure that helps us to understand and quantify the behaviour of $x_i$'s local dependence on the classification... and again...
+
+\[
+LDDR(x_j) = \frac{LDD^0(x_j \mid pa(x_j))}{LDD^1(x_j \mid pa(x_j))}
+\]
+
+where $LDDR$ is the **Local Dependence Derivative Ratio**.
+
+**_Other Results_**:
+
+- $LDDR(x_j) = 1$ either if the node has no parents or $LDD^0(x_j \mid pa(x_j)) = LDD^1(x_j \mid pa(x_j))$
+- $LDDR(x_j) > 1$ the class at the numerator is the supported one
+
+Now, in an inductive way, we pass from the local to the global dependence.
+
+We can explicit the *Bayes classifier* as:
+
+\[
+f_b(X_i) = f_{nb}(X_i) \cdot \prod_{j = 1}^p LDDR(x_j)
+\]
+
+Let's call for simplicity $\prod_{j = 1}^p LDDR(x_j) = DF$ 
+
+From the previous formula we can see that the difference between an *ANB* and the Naive Bayes classifier is determinated by the product of the $LDDR$ which reflects the **global dependence distribution** (i.e. how each local dependence is distributed in each class, and how all local dependencies work together).
+
+
+**Theorem:**
+
+Given $X_i = (x_1, x_2, ..., x_p)$, $f_b(X_i) = f_{nb}(X_i)$ under zero-one loss if and only if:
+
+- $f_b(X_i) \geq 1 \ \& \ DF(X_i) \leq f_b(X_i)$
+- $f_b(X_i) < 1 \ \& \  DF(X_i) > f_b(X_i)$
+- $f_b(X_i) > 1 \ \& \  DF(X_i) < f_b(X_i)$.
+
+
+If the distribution of the dependences satisfies certain conditions, then Naive Bayes classifies exactly the same as the underlying *ANB*, even though there may exist strong dependencies among attributes.
+
+Focus on the specific cases that can occur:
+
+* When $DF(X_i) = 1$, the dependencies in *ANB* has no influence on the classification
+
+* $f_b(X_i) = f_{nb}(X_i)$ does not require that $DF(X_i)=1$. The precise condition is given by the latter theorem.
+
+
+Let's make an example to better understand the concept:
+
+assuming that we have $f_b(X_i) = \frac{P(Y_i = 0 \mid X_i)}{P(Y_i = 1 \mid X_i)} = 0.8$, so $X_i$ is assigned to class *0*. Being $f_b \leq 1$, we would have $DF > f_b$. 
+
+Using the equation expressed in the theorem before, we can derive $f_{nb}(X_i) = \dfrac{F_b(X_i)}{DF(X_i)}$. Being $DF > f_b$, the whole ratio will be smaller than $1$, and so **the behaviour of the Naive Bayes will be equal to the Bayesian one.**
+
+In order to have a concrete visualization of this claim, we provide a simple example:
+
+let's consider three equiprobable boolean features, described by $x_1$, $x_2$ and $x_3$ where $x_1$ and $x_3$ are independent, and $x_1$ and $x_2$ completely dependent. Therefore $x_2$ should be ignored.
+
+Let's consider also two classes, denoted by $1$ and $0$.
+
+The optimal classification procedure will assign an observation to class $1$ if $P(x_1\mid 1) \cdot P(x_3 \mid 1) − P(x_1 \mid 0) \cdot P(x_3 \mid 0) > 0$, to class $0$ if the inequality has the opposite sign, and to an arbitrary class if the two sides are equal. 
+
+On the other hand, the Naive Bayesian classifier will take $x_2$ into account as if it was independent from $x_1$, and this will be equivalent to counting $x_1$ twice.
+
+Thus, the Naive Bayesian classifier will assign the instance to class $1$ if $P (x_1 \mid 1)^2 \cdot P (x_3 \mid 1) − P(x_1 \mid 0)^2 \cdot P(x_3 \mid 0) > 0$, and to $0$ otherwise.
+
+
+Let $P(1 \mid x_1) = p$ and $P(1 \mid x_3) = q$. Then, for the optimal classifier, class $1$ should be selected when $pq−(1−p) (1 − q) > 0$, which is equivalent to $q > 1 − p$. 
+
+On the other hand with the Naive Bayesian classifier, it will be selected when $p^2q−(1−p)^2 (1 − q) > 0$ ,which is equivalent to $q > \dfrac{(1-p)^2}{p^2+(1-p)^2}$.
+
+
+Looking at the plot below we can see the behaviour of the two classifiers as defined before. 
+
+```{r example_NB}
+# Define a function for the optimal classifier
+optimal_classifier <- function(x)
+{
+  q = 1 - x
+  return(q)
+}
+
+
+# Define a function for the naive bayes classifier
+naive_bayes_classifier <- function(x)
+{
+  q = ((1 - x)^2) / (x^2 + (1 - x)^2)
+  return(q)
+}
+
+
+# Plot the results
+curve(optimal_classifier(x),col='purple',lwd=5, xlab="p", ylab = "q")
+curve(naive_bayes_classifier(x),add=T, col='orchid',lwd=5)
+coord = seq(0,1,0.1)
+polygon(coord, naive_bayes_classifier(coord),col=rgb(0.8,0.6,0,0.3))
+legend(x="topright", legend = c("Optimal", "Naive Bayes", "Error Area"), col = c("purple","orchid",rgb(0.8,0.6,0,0.3)), lwd = 6, bty = 'n', cex = 2.5)
+```
+
+
+The remarkable fact is that, even though the independence assumption is decisively violated because $x_2$ is dependent from $x_1$, the Naive Bayesian classifier disagrees with the optimal procedure only in the two colored regions, while everywhere else it performs the correct classification. This shows that the Naive Bayesian classifier’s range of applicability may be much broader than we expected.
+
+For all problems where *p* and *q* does not fall in those two small regions, the Naive Bayesian classifier is effectively optimal.
+
+All these considerations are valid under $L_{0,1}$ loss function.
+
+### Running time
+
+Ok, the classification seems to work well (at least in theory)...but **_what about the time complexity_**?
+
+Also in this compound the Naive Bayes Classifier has an excellent behaviour.
+
+Let's analyze it deeper!
+
+In the general case we assume that each feature has a Normally distributed PDF. This assumption is made also in the current implementation of the *naiveBayes* function in the *R* package *e1071*.
+
+Belonging the likelihood to the exponential family (under gaussian PDF assumption), the Naive Bayes classifier corresponds to a linear classifier in a particular feature space (if the class conditional variance matrices are the same for all classes).
+
+At this point the optimal solution of the problem will be obtained in the optimization of a linear problem which will require less computational time than non-linear problems.
+
+Naive Bayes methods train very quickly since they require only a single pass on the data either to count frequencies (descrete variables) or to compute the normal probability density function (continuous variables under normality assumptions). So there aren't neither iterations or epoches neither backpropagation error or resolutions of an equation matrix.
+
+
+So in this case it's not true that "**Who goes slow and steady wins**"...in fact the Naive Bayes Classifier is one of the faster methods, and at the same time it has a good accuracy in the classification.
+
+But...**_how is the classification accuracy evaluated_**?
+
+We define the *risk function* as the expected value of the *loss function*. For binary classification problem usually the **_0-1 loss_** is used.
+
+This is the risk function formula:
+
+\[
+R(f)=\mathbb{E}_{(Y,X)} \bigg[ \mathbb{I}\big(Y\neq f(X)\big) \bigg]
+\]
+
+The *0-1 loss function* doesn't penalyze an inaccurate probability estimate, until than greater probability is assigned to the correct label (e.g. if you're classifing something that belongs to the *0* class with probability *0.51* or *0.99*, there is no difference in the loss function result).
+
+#<span style="color:red">PART 2</span>
+
+Load the required packages.
+
+```{r load_packages}
+library(plot3D)
+library(plotly)
+library(caret)
+library(readr)
+library(ks)
+library(MASS)
+library(e1071)
+library(tidyr)
+library(plotrix)
+library(doParallel)
+library(rpart)
+library(RCurl)
+library(FactoMineR)
+library(foreach)
+```
+
+Register the parameter for parallel computing, that will be used later.
+
+```{r par_parallel}
+cl <- makeCluster(3)
+registerDoParallel(cl,cores=2)
+```
+
+```{r}
+set.seed(666)
+```
+
+
+**Load data**
+
+Let's start!
+
+The original [dataset](https://archive.ics.uci.edu/ml/datasets/Daily+and+Sports+Activities) contains 19 activities performed by 8 people that wear sensor units on the chest (T), arms (RA and LA) and legs (RL and LL).
+
+For this part of homework, we use just **4 activities** (walking, stepper, cross trainer, jumping) performed by a single person (the first one in the original dataset) and as covariates the measurements taken by all the **9 sensors** (x, y, z accelerometers, x, y, z gyroscopes, x, y, z magnetometers) on each of the 5 units for a total of 45 features.
+
+
+```{r load_data}
+load("/Users/andreamarcocchia/Desktop/Università-DS/Statistical learning/HW2/daily-sport.RData")
+# load("/Users/Dario/Desktop/HW2 - Brutti/daily-sport.RData")
+```
+
+First of all, take a look at the structure of the *dailysport* dataset.
+
+```{r str_data}
+str(dailysport)
+
+summary(dailysport)
+```
+
+
+As we can see in the summary, our dataset is composed by 7500 for each activity made by the selected person. So the four classes are numerically equidistributed.
+
+Now we want to reduce the dataset into **two activities** (*jumping*, *crosstr*) and only **three sensors**. We decide to use the *x-y-z* sensor from the right-leg accelerometer.
+
+```{r reduce_data}
+data_reduce <- subset(dailysport,dailysport$id == "jumping" | dailysport$id == "crosstr")
+ds.small <- data_reduce[,c(1,29:31)]
+ds.small <- droplevels(ds.small)
+```
+
+Let's start with plot! For simplicity we plot only 500 points for each class.
+
+We start creating two datasets:
+
+1) jumping
+
+2) cross training
+
+
+```{r jump_cross_data}
+jump <- ds.small[ds.small$id == "jumping",]
+head(jump)
+```
+
+
+```{r cross_red}
+cross <- ds.small[ds.small$id == "crosstr",]
+
+head(cross)
+```
+
+
+In the next chunk we pick 1000 observations: 500 from *jumping* and 500 from *cross training* activity.
+
+```{r new_data}
+# Randomly select the indexes
+idxxx <- sample(1:length(jump$id),size = 500,replace=F)
+
+# Create the new dataset
+new_data=rbind(jump[idxxx,],cross[idxxx,])
+```
+
+
+Here we represent the point cloud using the *plot_ly* function, in order to obtain an interactive plot.
+
+```{r plot3D,fig.height = 7, fig.width = 7, fig.align = "center"}
+plot_ly(x = new_data$`RL-xAcc`, y = new_data$`RL-yAcc`, z = new_data$`RL-zAcc`, color = new_data$id , colors = c('#BF382A', '#0C4B8E'), alpha = 0.8) %>% add_markers()
+```
+
+What a mess! Seems to be hard to classify this points...
+
+Now we are going to split our dataset in **train** and **test**:
+
+```{r test_train}
+# Define the number of elements in the test
+# In this case is the 30% 
+n_test <- round(0.3*nrow(ds.small))
+
+# Randomly select the elements that will belong to test set
+idx_test <- sort(sample(1:nrow(ds.small), n_test))
+
+head(idx_test)
+
+# Create the test set
+ds.test <- ds.small[idx_test,]
+
+# Create the train set
+ds.train <- ds.small[setdiff(1:nrow(ds.small),idx_test),]
+```
+
+
+Last operations before starting the predictions...in the next chunk we want to scale the data:
+
+```{r scale_data}
+test_scalato <- ds.test
+# Scale all the numeric variables (all except the first one)
+test_scalato[,2:4] <- scale(ds.test[,2:4])
+
+train_scalato <- ds.train
+train_scalato[,2:4] <- scale(ds.train[,2:4])
+```
+
+Ok, we have all the elements to start the predictions.
+
+We'll try different methods, in  order to obtain the best result.
+
+The first method that we apply is the **LDA (Linear Discriminant Analysis)** that is a method used in statistics and machine learning to find a linear combination of features that characterizes or separates two or more classes of objects.
+
+The resulting combination may be used as a linear classifier or, more commonly, for dimensionality reduction before later classification. In this project we'll use it as a linear classifier.
+
+
+It is important to understand the assumptions for its implementation. LDA assumes that the conditional probability density functions (PDF) $p(\bar{x} \mid y=0)$ and $p(\bar{x} \mid y=1)$ are both normally distributed with mean and covariance parameters equal to $(\bar{\mu}_0,\Sigma_{0})$ and $(\bar{\mu}_1,\Sigma_{1})$.
+
+Moreover LDA makes the additional simplifying **homoscedasticity assumption**, assuming that the variance for each feature is the same in each classes. It’s called **pooled variance estimate**.
+
+Some problems could arise due to the presence of outliers.
+
+In the LDA method the size of the smallest group must be larger than the number of predictor variables, as in our case (7500 observations in each class and a smaller number of variables).
+
+In the next chunk we train the algorithm in the train set and we check the results (**accuracy**) in the train set itself. We'll use scaled data, to avoid problems related to the computation of the pooled variance.
+
+```{r lda}
+# Estimate the parameter in the train set
+lda.out <- lda(id ~ . , data = train_scalato)
+
+# Predict the result
+pred.tr <- predict(lda.out, train_scalato)
+
+# Estimate the error
+mean(pred.tr$class == train_scalato$id)
+```
+
+
+Now it's time to check how our classifier works in another dataset...this is why we have the **test** one!
+
+We have to remember that the train gives us an optimistic evaluation of our model, so we need to verify how good the model is on the test set.
+
+To summarize the results we use the *confusionMatrix* function provided by *caret* package.
+
+Let's check:
+
+```{r lda2}
+# Predict the results for the test set
+pred.te <- predict(lda.out, test_scalato[,-1])
+
+# Print the confusion matrix 
+confusionMatrix(pred.te$class, test_scalato$id)
+```
+
+We notice that LDA performance is not so satisfactory and probably the assumptions aren’t the better choice for our situation.
+
+Howewer we can mantain the **gaussian distributed PDF assumption**, and try to use a simpler model...or better *Naive*! 
+
+Let's now focus on the **Naive Bayes Classifier**. 
+In the next chunk we train the algorithm on the train set:
+
+```{r nb}
+bayes.tr <- naiveBayes(id ~ . , data = ds.train,type = "raw")
+
+pred.baye.tr <- predict(bayes.tr, ds.train[,-1])
+
+mean((pred.baye.tr == ds.train$id))
+```
+
+At a glance we obtain a better result comparing with the *LDA*.
+
+Let's check how it goes in the test:
+
+
+```{r nb2}
+# Test the naive bayes prediction on the test set
+
+pred.baye.te <- predict(bayes.tr, ds.test[,-1])
+
+confusionMatrix(pred.baye.te, ds.test$id)
+```
+
+The result obtained through the test set, using the Naive bayes, is improved of about 30 percentage points.
+
+**Confidence Interval**
+
+Now we have to estimate the 1-dimensional class–conditional densities of each of the three covariates using histograms or kernels and build $95\%$ **bootstrap confidence bands** around them.
+
+
+Let's start estimating the KDE using the function *density* for each of the three variables within the two classes:
+
+```{r estimate_density}
+jump_x_density <- density(jump$`RL-xAcc`)
+jump_y_density <- density(jump$`RL-yAcc`)
+jump_z_density <- density(jump$`RL-zAcc`)
+
+cross_x_density <- density(cross$`RL-xAcc`)
+cross_y_density <- density(cross$`RL-yAcc`)
+cross_z_density <- density(cross$`RL-zAcc`)
+```
+
+
+Now we define a function to build a boostrap confidence bands:
+
+```{r CI_density_fun}
+ConfidenceBands_density <- function(dataset, from = -100, to = 100, n = 1000, evalpoints = 1000, B = 2000, coord = c("x","y","z"))
+{
+  # Iterate over the variables in the dataset (excluded the first one, that is the id)
+  for (elemento in 2:ncol(dataset))
+  {
+    # Save the column values
+    x <- dataset[,elemento]
+    xax <- seq(from,to,length.out = evalpoints)
+    
+    # Estimate the Kernel density
+    d <- density(x,n=evalpoints,from=from,to=to)
+    
+    # Create an empty matrix in which will be stored the bootsrapping sample
+    # Number of columns is equal to the number of bootstrap iteration
+    estimates <- matrix(NA,nrow=evalpoints,ncol=B)
+    
+    # Iterate over each bootstrap repetition
+    for (b in 1:B)
+      {
+        # Sample from the observation in the selected column, with repetition
+        xstar <- sample(x,replace=TRUE)
+        
+        # Evaluate the density estimation for the bootstrap sample
+        dstar <- density(xstar,n=evalpoints,from=from,to=to)
+        
+        # Fill the column with the y values, associated with xstar
+        estimates[,b] <- dstar$y
+      }
+    
+    # Set the 95% probability using the prameter probs
+    ConfidenceBands <- apply(estimates, 1, quantile, probs = c(0.025, 0.975))
+    
+    # Plot
+    plot(d,lwd=2,col="purple",ylim=c(0,max(ConfidenceBands[2,]*1.01)),main=paste("coordinate", coord[elemento - 1]))
+    xshade <- c(xax,rev(xax))
+    yshade <- c(ConfidenceBands[2,],rev(ConfidenceBands[1,]))
+    polygon(xshade,yshade, border = NA,col=adjustcolor("red", 0.4))
+  }
+  
+  # Add the title
+  title("Pointwise bootstrap confidence bands", outer = T)
+    
+}
+```
+
+Let's take a look!
+
+Here we plot the confidence bands for three variables associated to the *jumping* class:
+
+```{r CI_density,fig.height = 8, fig.width = 20, fig.align = "center"}
+par(mfrow=c(1,3), oma=c(0,0,2,0))
+ConfidenceBands_density(dataset = jump,from = -55, to = 20)
+```
+
+And here there are the plots for the *cross train* activity:
+
+
+```{r, fig.height = 8, fig.width = 20, fig.align = "center"}
+par(mfrow=c(1,3), oma=c(0,0,2,0))
+ConfidenceBands_density(dataset = cross,from = -25, to = 20)
+par(mfrow=c(1,1), oma=c(0,0,0,0))
+```
+
+
+Analyzing the plot above, it's possible to see that the $x$ variable, in both classes, seems not to follow the behaviour of a gaussian distribution.
+
+In the peaks the confidence bands are larger, and so the density estimation is less precise.
+
+**Naive Bayes Classifier hand-made**
+
+Well, now it's time to make a first-hand experience with Naive Bayes!
+
+In this part of the project we **implement our version of the Naive Bayes Classifier**. In the *naiveBayes* function is assumed that all the features have a Normally distributed PDF, while we decide to use a **non-parametric approach**.
+
+In fact we estimate the features' PDF using a **Kernel Density Estimator** (function *density*); as we have seen before the assumption about gaussian PDF is not always respected.
+
+
+We implement our classifier with two functions:
+
+* _naive_bayes2_ $\Rightarrow$ function that requires in input the dataframe in which the model has to be trained, the kernel type (gaussian kernel as default) and the column position in which are stored the labels in the dataframe (first column as default). The output of this function is a list whose values are the estimations that will be used in the other function.
+
+
+* _predizione_ $\Rightarrow$ function that requires in input the list of values obtained with _naive_bayes2_, the test dataset and a value to use as *pseudocount*. In this function new observations are classified. The output is a list of labels, one for each row in the test dataset.
+
+
+Just one more detail: **if a given class and feature value never occur together in the training data**, then the frequency-based probability estimate will be zero.
+
+This is an issue because the Likelihood will be equal to $0$ so all the informations will be wiped out. Therefore, it is often desirable to incorporate a small-sample correction, called **pseudocount**, in all probability estimates such that no probability is ever set to be exactly zero.
+
+A regularizing way for *Naive Bayes* is called **Laplace smoothing**, and it's when the pseudocount is one. In our implementation we don't set the *pseudocount* value equal to 1, but we want to penalyze the likelihood when this situation occurs, by using a number really close to $0$. We find the smaller value that *R* is able to represent, and we use as *pseudocount* a number a bit bigger.
+
+
+Here we have the *naive_bayes2* function:
+
+```{r}
+naive_bayes2 <- function(train, kern = "gaussian", pos = 1)
+{
+  # Check if the kernel in input is supported by the density function
+  "%ni%" <-  Negate("%in%")
+  if (kern %ni% c("gaussian", "epanechnikov", "rectangular", "triangular", "biweight", "cosine", "optcosine"))
+  {
+    stop("Invalid name for Kernel")
+  }
+  
+  # Check if the train dataset is a dataframe
+  if (is.data.frame(train)==F)
+  {
+    stop("Invalid structure for train. Required data frame")
+  }
+  
+  if (pos != 1)
+  {
+    if (pos==ncol(train))
+    {
+      train <- train[,c(pos, 1:ncol(train)-1)]
+    }
+    else
+    {
+      train <- train[,c(pos,1:(pos-1),(pos+1):ncol(train))]
+    }
+  }
+
+  # Store in a vector all the labels
+  id <- train[,1]
+  
+  # Store all the different classes that appear in the dataset
+  label <- levels(id)
+  
+  # Create an empty list that will be use to store final result
+  biggg <- list()
+
+  # Start a loop that iterate over the different labels
+  for (i in 1:length(label))
+  {
+    # Select all the elements that belong to a particular class
+    aux <- train[train[,1]==label[i],]
+    
+    # Evaluate the ratio between the number of element in the class over the total number of observations
+    prop <- length(aux[,1])/length(train[,1])
+    indice <- 1
+    listone <- list()
+    
+    # Start a loop over the variables
+    for (j in 2:ncol(aux))
+    {
+      # Estimate the density for a certain column
+      density_estimation <- density(aux[,j], kernel = kern)
+      
+      # Store in a list the values of x and y obtained with the density in the previous operation
+      lll <- list(x = density_estimation$x, y = density_estimation$y)
+      
+      # Add lll to listone in position index
+      listone[[indice]] <- lll
+
+      indice <- indice + 1
+    }
+    
+    # Create a list with two elements:
+    # listone --> inside listone there are other lists, as many as the number of variables
+    # prop --> a number that represents the proportion of observations that belong to this class
+    auxiliar_55 <- list(val=listone, prop = prop)
+    
+    # the biggg list will have as many elements as many the class are
+    biggg[[i]] <- auxiliar_55
+ 
+  }
+  return(biggg)
+}
+
+```
+
+
+...and here the *predizione* function:
+
+```{r}
+predizione <- function(lista_par, test_set, pseudocount = 2.225074e-208)
+{
+  # Check if lista_par is a list object
+  if (typeof(lista_par) != "list")
+  {
+    stop("Invalid type for lista_par")
+  }
+  
+  # Check if the test_set dataset is a dataframe
+  if (is.data.frame(test_set)==F)
+  {
+    stop("Invalid structure for test_set. Required data frame")
+  }
+  
+  final_ris <- NULL
+  
+  # Store the number of variables in num_var
+  # The number of variables has to be the same as the number of variables inside lista_par
+  num_var <- length(test_set[1,]) - 1
+  
+  # Store all the different classes that appear in the dataset
+  label <- levels(test_set[,1])
+  
+  # Iterate over the number of rows in the dataset (test_set)
+  for (datass in 1:nrow(test_set))
+  {
+    ris <- NULL
+    
+    # Iterate over the number of labels (same as the length of lista_par)
+    for (i in 1:length(lista_par))
+    {
+      lik <- NULL
+      
+      # Iterate over the variables 
+      for (j in 1:num_var)
+      {
+        mom <- approx(lista_par[[i]][[1]][[j]]$x ,lista_par[[i]][[1]][[j]]$y , xout = test_set[datass,][j+1])$y
+        
+        if (is.na(mom))
+        {
+          lik[j] <-  pseudocount
+        }
+        
+        else
+        {
+          lik[j] <-  mom
+        }
+      }
+      
+      # Insert for a certain row the values of a certain class
+      # For values we mean the product between the prior and the likelihood
+      ris[i] <- prod(lik) * lista_par[[i]][[2]]
+    }
+    
+    # Find the class with the bigger value (max probability)
+    massimo <- which.max(ris)
+    
+    # Extract the corresponding label
+    final_ris[datass] <- label[massimo]
+  }
+  
+  return(final_ris)
+}
+```
+
+Ok, the most is done. Now we have to use our functions! Let's start to train the model on the *ds.train* dataframe, and then test it on the *ds.test* dataframe.
+
+```{r}
+# Train the model
+wer <- naive_bayes2(ds.train)
+
+# Make the prediction on the test set
+ret <- predizione(wer,ds.test)
+
+# Evaluate the performance
+ww <- NULL
+for (i in 1:length(ret))
+{
+  ww[i] <- ret[i] == ds.test$id[i]
+}
+
+mean(ww)
+
+```
+
+
+Great! Our model performs very well, even better than the *naiveBayes* function from *e1071* packege. Probably this result is reached because we use a non-parametric approach, and so our density estimation fits better than the one under normality assumption.
+
+
+#<span style="color:red">PART 3</span>
+
+Up to now we have worked on two activities and three variables. 
+From now on we will use the entire dataset. So our data will be composed by:
+
+* 4 activities
+* 1 class variable (*id*)
+* 45 predictors
+
+
+Now let's try the classification on the whole dataset. We start using **Naive Bayes** from the package.
+
+```{r}
+# Define the number of elements in the test
+# In this case is the 30% 
+n_test <- round(0.3*nrow(dailysport))
+
+# Randomly select the elements that will belong to test set
+idx_test <- sort(sample(1:nrow(dailysport), n_test))
+
+# Create the test set
+daily_test <- dailysport[idx_test,]
+
+# Create the train set
+daily_train <- dailysport[setdiff(1:nrow(dailysport),idx_test),]
+```
+
+
+```{r}
+tr.bayes <- naiveBayes(id~., data = daily_train)
+
+tr.prediction <- predict(tr.bayes, daily_test[,-1])
+
+confusionMatrix(tr.prediction, daily_test$id)
+```
+
+Perfect prediction!
+
+
+Let's try to do something different.
+
+We're going to apply the **PCA (Principal Components Analysis)** method in order to reduce the variable dimension, and let's check if the accuracy of the model is as good as the previous one.
+
+To perform the Principal Component Analysis we use the function *PCA* from package *FactoMineR*.
+
+You may ask...**_why do we use PCA instead of LDA to make dimensionality reduction_**?
+
+PCA creates a new space defining axes orthogonal and maximizes the variance between the variables. On the other hand LDA maximizes the distance of the labels but the new axes are not orthogonal.
+
+Remember that the core assumption of Naive Bayes is the independence between features, so applying PCA is a good idea.
+
+Let's start the dimensionality reduction using PCA:
+
+```{r}
+data_pca <- PCA(dailysport, ncp = 11, quali.sup = 1, graph = F)
+```
+
+Check the results...**_how many components do we have to grab?_**
+For sure all the variability is explained taking all the factors.
+
+Let's analyze the summary:
+
+```{r}
+summary(data_pca)
+```
+
+There are many ways to decide the number of factors to take. Let's see three of them:
+
+* __Value of the eigenvalues bigger than one__
+
+```{r}
+head(data_pca$eig, 13)
+```
+
+In this case the "right" choice would be 11 factors.
+
+* __Elbow method on screeplot (barplot of eigenvalues)__
+
+
+```{r}
+plot(data_pca$eig[,1],type='b', col='orange')
+```
+
+As shown above the number of factors seems to be around 9-11.
+
+* __Percentage of explained variance__
+
+```{r}
+head(data_pca$eig, 13)
+```
+
+This method is really discretional and there aren't right or wrong decisions. However using **11 factors** the $75\%$ of the total variance is explained, so we decide to work with $11$ factors.
+
+Let's create the new dataframe according to the new $11$ variables.
+
+```{r}
+new_data_pca <- as.data.frame(data_pca$ind[[1]])
+
+# Add the labels
+new_data_pca <- cbind(new_data_pca, dailysport$id)
+
+# Shift the id_column position
+new_data_pca <- new_data_pca[,c(12,1:11)]
+```
+
+
+Now we split data in train and test:
+
+```{r}
+n_test <- round(0.3*nrow(new_data_pca))
+
+idx_test <- sort(sample(1:nrow(new_data_pca), n_test))
+
+test_PCA <- new_data_pca[idx_test,]
+train_PCA <- new_data_pca[setdiff(1:nrow(new_data_pca),idx_test),]
+```
+
+
+**Prediction time....again**
+
+Let's start using the **Naive Bayes** method on the reduced ($11$ variables) dataset:
+
+```{r}
+tr.pca.bayes <- naiveBayes(`dailysport$id`~., data = train_PCA)
+
+tr.pca.prediction <- predict(tr.pca.bayes, train_PCA[,-1])
+
+confusionMatrix(tr.pca.prediction, train_PCA$`dailysport$id`)
+```
+
+And now test the model:
+
+```{r}
+te.pca.prediction <- predict(tr.pca.bayes, test_PCA[,-1])
+
+confusionMatrix(te.pca.prediction, test_PCA$`dailysport$id`)
+```
+
+Analyzing the confusion matrix, we can see that the accuracy is a bit smaller than the one obtained in the whole dataset, but the advantage here is that we have used only $11$ variables.
+
+In the next chunk we'll try our algorithm:
+
+```{r}
+our_pca <- naive_bayes2(train_PCA)
+
+our_pca_pred <- predizione(our_pca, test_PCA)
+
+# Create the factors from the output list, in order to apply the confusionMatrix function
+levels_predizione <- as.factor(our_pca_pred)
+
+confusionMatrix(levels_predizione, test_PCA$`dailysport$id`)
+```
+
+Ok, our classifier seems to be great!
+
+However we have to keep in mind that we're working with the informations which come from one specific person so the activies are performed always in the same way.
+
+**_What happens if we improve our dataset adding data from another person?_**
+
+
+To obtain this data we explore the [*UCI Machine Learning Repository*](https://archive.ics.uci.edu/ml/datasets/Daily+and+Sports+Activities) and we download the data folder.
+It would be useless let you change the path to make the code runnable, so we create the new dataset and we store it in our *Github* repository. 
+
+
+**The next chunk of code is not going to be run**, but we think it could be usefull to understand how we create the new dataset:
+
+
+```{r, eval=F}
+# Initialize an empty dataframe
+new_person <- data.frame()
+
+# Iterate over the four activities
+for (activity in c(9,13,14,18))
+{
+  if (activity==9){
+    activitaa = paste("a0",activity,sep = "")
+  }
+  else{
+    activitaa = paste("a",activity,sep = "")
+  }
+  
+  # Iterate over all the sensors
+  for (senso in 1:60)
+  {
+    if (senso %in% 1:9){
+      aux=paste("s0",senso,sep = "")
+    }
+    else{
+      aux=paste("s",senso,sep = "")
+      
+    }
+    
+    # Create the full path for each combination
+    path = paste("/Users/andreamarcocchia/Desktop/Statistical learning/HW2/data/",activitaa,"/p5/",aux,".txt", sep="")
+    
+    # Read the file
+    s01 <- read_csv(path, col_names = FALSE)
+    
+    # Identify the correct label
+    if (activity == 9)
+    {
+      labee <- "walking"
+    }
+    
+    else if (activity == 13)
+    {
+      labee <- "stepper"
+    }
+    
+    else if (activity == 14)
+    {
+      labee <- "crosstr"
+    }
+    
+    else if (activity == 18)
+    {
+      labee <- "jumping"
+    }
+    
+    # Add the label to the dataframe
+    s01 <- cbind(s01,labee)
+    
+    # Add observations to the complete dataset
+    new_person <- rbind(new_person, s01)
+  }
+}
+
+# Switch the column positions such that the id is the first one
+new_person <- new_person[,c(ncol(new_person),1:(ncol(new_person)-1))]
+
+# Add variable names to the new dataframe
+names(new_person) <- names(dailysport)
+
+
+# Write a .txt file that will be upload to our Github
+write.table(new_person,"/Users/andreamarcocchia/Desktop/Università-DS/Statistical learning/HW2/new_person.txt",sep="\t",row.names=FALSE)
+
+```
+
+Ok, end of *non-running* section of our code!
+
+In the next chunk we download the data from Github:
+
+```{r}
+# Load data from an URL
+new_person <-read.csv(text=getURL("https://raw.githubusercontent.com/andremarco/Naive-bayes-classifier/master/new_person.txt"), header=T, sep = "\t")
+```
+
+Let's **merge the two dataframes**: we would like to have a big dataframe with $60000$ observations that are related to two different persons.
+
+```{r}
+# Modify the dataframe names
+names(new_person) <- names(dailysport)
+
+# Concatenate the two daframes
+gigante <- rbind(dailysport,new_person)
+```
+
+Since now the two persons are combined as they are a single person who is observed for $60000$ times in different activities. So now we create the train and test dataset. 
+
+```{r}
+# Select the number of elements in the test (30%)
+n_test <- round(0.3*nrow(gigante))
+
+idx_test <- sort(sample(1:nrow(gigante), n_test))
+
+test_gigante <- gigante[idx_test,]
+train_gigante <- gigante[setdiff(1:nrow(gigante),idx_test),]
+```
+
+And now...prediction!
+
+Let's start using the *naiveBayes* implementation of *e1071* package.
+
+```{r}
+pred_new_person <- naiveBayes(id~., data = train_gigante)
+
+prediz_np <- predict(pred_new_person, test_gigante[,-1])
+
+confusionMatrix(prediz_np, test_gigante$id)
+```
+
+Very good job also in this case, in fact the accuracy is near $100\%$.
+
+Now it's important to understand the role of the data used to train the model: we have tried to train the *Naive Bayes* classifier on the data of one person, and test it on the data of the other one:
+
+```{r}
+train_p1 <- naiveBayes(id~., data = dailysport)
+
+pred_p2 <- predict(train_p1, new_person[,-1])
+
+confusionMatrix(pred_p2, new_person$id)
+```
+
+As it's possible to see the accuracy has decreased of about $50$ percentage points.
+
+It's very important that the train and test datasets describe the features of the analyzed person. The train and test have to be balanced because the data through which the model is trained, will determin the [quality of the prediction](https://eu.usatoday.com/story/tech/nation-now/2018/06/07/artificial-intelligence-fed-reddit-captions-became-psychopath/681888002/).
+
+
+**Decision Tree**
+
+Up to now we didn't focus on the importance of the single original variables. So we would like to find out the most important variables, in terms of given informations. We do it through the **decision trees**, using the *rpart* package.
+
+```{r, message=F}
+# Fit the model
+daily_rpart = rpart(id ~ ., data = daily_train, control = rpart.control(xval = 100))
+daily_rpart
+```
+
+```{r}
+# Plot the decision tree
+plot(daily_rpart)
+text(daily_rpart)
+```
+
+Ok, seems to have found the most important variables:
+
+* __T-yMag__
+* __RL-zMag__
+* __LA-xMag__
+
+It means that the magnetometer is the instrument that is more able to capture the diffences among the four activities. 
+
+So we can classify using only them. Our hope is to obtain the same accuracy (or a bit smaller) as the one obtained using all the variables
+
+Let's start working with three variables. In the next chunk we create a new dataframe:
+
+```{r}
+test_ridotto <-  as.data.frame(daily_test[,c("id","T-yMag","RL-zMag","LA-xMag")])
+train_ridotto <- as.data.frame(daily_train[,c("id","T-yMag","RL-zMag","LA-xMag")])
+```
+
+Let's check the results, using *Naive Bayes*:
+
+```{r}
+t1 <- naiveBayes(id~., data = train_ridotto)
+
+p1 <- predict(t1, test_ridotto[,-1])
+
+confusionMatrix(p1, test_ridotto$id)
+```
+
+
+Our hope has been respected: we reach $99.9\%$ of the accuracy.
+
+
+Now we want to reduce more the number of variables, so we pick up only the first two. We proceed as before:
+
+```{r}
+test_ridotto2 <-  as.data.frame(daily_test[,c("id","T-yMag","RL-zMag")])
+train_ridotto2 <- as.data.frame(daily_train[,c("id","T-yMag","RL-zMag")])
+```
+
+Now that we are working with two dimensions, it's easier to see how the variables are distributed:
+
+```{r}
+plot(dailysport$`RL-zMag`,dailysport$`T-yMag`, col=dailysport$id, xlab ="RL-zMag", ylab = "T-yMag")
+legend(x="topleft", legend = unique(dailysport$id), col=unique(dailysport$id), pch=16, cex=3, bty = 'n')
+```
+
+Visualizing the plot we can expect that some errors can occur in the walking and cross training classification. 
+
+Let's see...and do!
+
+```{r}
+t2 <- naiveBayes(id~., data = train_ridotto2)
+
+p2 <- predict(t2, test_ridotto2[,-1])
+
+confusionMatrix(p2, test_ridotto2$id)
+```
+
+The accuracy is a bit smaller than before, in fact we reached $94.5\%$.
+
+Analyzing the confusion matrix results, it's possible to see that the errors, in accordance to the decision tree plot, occur during the classification between *crosstr* and *walking* classes.
+
+```{r}
+plot( daily_rpart )                # Basic plot
+text(daily_rpart)
+draw.circle(2.5,0.1,0.7,nv=100,border=NULL,col=rgb(0,0,0.8,0.3),lty=1,density=NULL,angle=45,lwd=4)
+```
+
+
+
+**Summary**
+
+Let's make a final recap!
+
+At the end of this project it's really clear the importance of three things in **classification**:
+
+* Assumptions about the variables' distribution
+* Variable selection
+* Construction of test and train dataset
+
+About the **first point**, we have seen that the behaviour of our **non-parametric** *Naive Bayes* classifies better than the one built under gaussian assumption. So, generally, we can say that if you don't have certainty about the distribution of your data, the better choice is to handle the problem via a *non-parametric* approach.
+
+Regarding to the **second point**, we have seen that is not necessary to use all the variables to obtain a great classification. It's always recommended to extract the meaningfull variables or to reduce the features' space (via PCA or LDA) for avoiding the curse of dimensionality.
+
+And finally, for the **third point** (the last but not the least), we have seen that building both a non-balanced train and test bring us into a mess. It's important to train the model with data related to the subject that has to be predicted.
+
+
+
+# References
+
+- S.B. Kotsiantis, *Supervised Machine Learning: A review of classification techniques*
+- A.Ashari,I.Paryudi, A.M.Tjoa, *Performance Comparison between Naive Bayes, Decision Tree and the K-Nearest Neighbor in Searching Alternative Design in an Energy Simulation Tool*
+- H.Zhang, *The Optimality of Naive Bayes*
+- P. Domingos, M. Pazzani, *On the Optimality of the Simple Bayesian Classifier under Zero-One Loss*
+- G. H. John, P. Langley, *Estimating Continuous Distributions in Bayesian Classifiers*
+
+
